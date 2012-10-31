@@ -37,6 +37,138 @@ const BUS_NAME = 'org.ofono';
 
 let _extension = null;
 
+/* org.ofono.Mdem Interface */
+const ModemInterface = <interface name="org.ofono.Modem">
+<method name="SetProperty">
+    <arg name="name" type="s" direction="in"/>
+    <arg name="value" type="v" direction="in"/>
+</method>
+<signal name="PropertyChanged">
+    <arg name="name" type="s"/>
+    <arg name="value" type="v"/>
+</signal>
+</interface>;
+
+const ModemProxy = Gio.DBusProxy.makeProxyWrapper(ModemInterface);
+
+const ModemItem = new Lang.Class({
+    Name: 'Modems.ModemItem',
+
+    _init: function(path, properties) {
+	this.path = path;
+	this.proxy = new ModemProxy(Gio.DBus.system, BUS_NAME, path);
+
+	this.powered	= properties.Powered.deep_unpack();
+	this.online	= properties.Online.deep_unpack();
+	this.type	= properties.Type.deep_unpack();
+
+	if (properties.Name)
+	    this.name	= properties.Name.deep_unpack();
+	else if (properties.Manufacturer) {
+	    this.manufacturer = properties.Manufacturer.deep_unpack();
+
+	    if (properties.Model) {
+		this.model = properties.Model.deep_unpack();
+		this.name = this.manufacturer + '-' + this.model
+	    } else
+		this.name = this.manufacturer;
+	} else
+	    this.name = "Modem";
+
+	this.interfaces = properties.Interfaces.deep_unpack();
+
+	this.prop_sig = this.proxy.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
+		if (property == 'Powered')
+		    this.set_powered(value.deep_unpack());
+		if (property == 'Manufacturer')
+		    this.set_manufacturer(value.deep_unpack());
+		if (property == 'Model')
+		    this.set_model(value.deep_unpack());
+		if (property == 'Name')
+		    this.set_name(value.deep_unpack());
+	}));
+
+    },
+
+    CreateMenuItem: function() {
+	/* Create a Menu Item for this modem. */
+	this.Item = new PopupMenu.PopupMenuSection();
+
+	this.sw = new PopupMenu.PopupSwitchMenuItem(null, this.powered);
+	this.sw.label.text = this.name;
+
+	this.sw.connect('toggled',  Lang.bind(this, function(item, state) {
+	    let val = GLib.Variant.new('b', state);
+	    this.proxy.SetPropertyRemote('Powered', val);
+	}));
+
+	this.Item.addMenuItem(this.sw);
+
+	return this.Item;
+    },
+
+    set_powered: function(powered) {
+	this.powered = powered;
+	this.sw.setToggleState(powered);
+    },
+
+    set_manufacturer: function(manufacturer) {
+	this.manufacturer = manufacturer;
+	if (this.model)
+	    this.name = this.manufacturer + '-' + this.model;
+	else
+	    this.name = this.manufacturer;
+
+	this.sw.label.text = this.name;
+    },
+
+    set_model: function(model) {
+	this.model = model;
+	if (this.manufacturer)
+	    this.name = this.manufacturer + '-' + this.model;
+	else
+	    this.name = "Modem" + '-' + this.model;
+	this.sw.label.text = this.name;
+    },
+
+    set_name: function(name) {
+	this.name = name;
+	this.sw.label.text = this.name;
+    },
+
+    UpdateProperties: function(properties) {
+
+    },
+
+    CleanUp: function() {
+	if (this.prop_sig)
+	    this.proxy.disconnectSignal(this.prop_sig);
+
+	if (this.Item)
+	    this.Item.destroy();
+    }
+});
+
+/* org.ofono.Manager Interface */
+const ManagerInterface = <interface name="org.ofono.Manager">
+<method name="GetModems">
+    <arg name="modems" type="a(oa{sv})" direction="out"/>
+</method>
+<signal name="ModemAdded">
+    <arg name="path" type="o"/>
+    <arg name="properties" type="a{sv}"/>
+</signal>
+<signal name="ModemRemoved">
+    <arg name="path" type="o"/>
+</signal>
+</interface>;
+
+const ManagerProxy = Gio.DBusProxy.makeProxyWrapper(ManagerInterface);
+
+function Manager() {
+    return new ManagerProxy(Gio.DBus.system, BUS_NAME, '/');
+}
+
 const ofonoManager = new Lang.Class({
     Name: 'ofonoManager',
     Extends: PanelMenu.SystemStatusButton,
@@ -56,9 +188,43 @@ const ofonoManager = new Lang.Class({
 	    this._no_ofono.destroy();
 	    this._no_ofono = null;
 	}
+
+	this.manager = new Manager();
+	this.modems = {};
+
+	this.manager_sig_modemadd = this.manager.connectSignal('ModemAdded', Lang.bind(this, function(proxy, sender,[path, properties]) {
+	    if (Object.getOwnPropertyDescriptor(this.modems, path)) {
+		return;
+	    }
+
+	    this.modems[path] = {modem: new ModemItem(path, properties), sep: new PopupMenu.PopupSeparatorMenuItem()};
+	    this.menu.addMenuItem(this.modems[path].modem.CreateMenuItem());
+	    this.menu.addMenuItem(this.modems[path].sep);
+	}));
+
+	this.manager_sig_modemrem = this.manager.connectSignal('ModemRemoved', Lang.bind(this, function(proxy, sender, path) {
+	    if (!Object.getOwnPropertyDescriptor(this.modems, path)) {
+		return;
+	    }
+
+	    this.modems[path].modem.CleanUp();
+	    this.modems[path].sep.destroy();
+	    delete this.modems[path];
+	}));
+
+	this.manager.GetModemsRemote(Lang.bind(this, this.get_modems));
     },
 
     ofonoVanished: function() {
+	if (this.modems) {
+	    for each (let path in Object.keys(this.modems)) {
+		this.modems[path].modem.CleanUp();
+		delete this.modems[path];
+            }
+
+	    delete this.modems;
+	}
+
 	this.setIcon('network-cellular-umts-symbolic');
 
 	if (this._no_ofono)
@@ -70,6 +236,23 @@ const ofonoManager = new Lang.Class({
 
 	this._no_ofono.addMenuItem(no_ofonod);
 	this.menu.addMenuItem(this._no_ofono);
+    },
+
+    get_modems: function(result, excp) {
+	/* result contains the exported Modems.
+	 * modems is a array: a(oa{sv}), each element consists of [path, Properties]
+	*/
+	let modem_array = result[0];
+
+	for each (let [path, properties] in modem_array) {
+	    if (Object.getOwnPropertyDescriptor(this.modems, path)) {
+		this.modems[path].modem.UpdateProperties(properties);
+	    } else {
+		this.modems[path] = { modem: new ModemItem(path, properties), sep: new PopupMenu.PopupSeparatorMenuItem()};
+		this.menu.addMenuItem(this.modems[path].modem.CreateMenuItem());
+		this.menu.addMenuItem(this.modems[path].sep);
+	    }
+	}
     }
 })
 
