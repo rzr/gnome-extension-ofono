@@ -61,6 +61,7 @@ const ModemItem = new Lang.Class({
 	this.powered	= properties.Powered.deep_unpack();
 	this.online	= properties.Online.deep_unpack();
 	this.type	= properties.Type.deep_unpack();
+	this.status	= _("No SIM");
 
 	if (properties.Name)
 	    this.name	= properties.Name.deep_unpack();
@@ -104,6 +105,17 @@ const ModemItem = new Lang.Class({
 
 	this.Item.addMenuItem(this.sw);
 
+	this.status_section = new PopupMenu.PopupBaseMenuItem();
+
+	this.label = new St.Label();
+	this.label.text = _("Status:");
+	this.status_section.addActor(this.label);
+
+	this.status_label = new St.Label();
+	this.status_label.text = this.status;
+	this.status_section.addActor(this.status_label, { align: St.Align.END });
+
+	this.Item.addMenuItem(this.status_section);
 	return this.Item;
     },
 
