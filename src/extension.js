@@ -61,7 +61,8 @@ const ModemItem = new Lang.Class({
 	this.powered	= properties.Powered.deep_unpack();
 	this.online	= properties.Online.deep_unpack();
 	this.type	= properties.Type.deep_unpack();
-	this.status	= _("No SIM");
+	this.interfaces	= null;
+	this.status	= _("Disabled");
 
 	if (properties.Name)
 	    this.name	= properties.Name.deep_unpack();
@@ -76,19 +77,24 @@ const ModemItem = new Lang.Class({
 	} else
 	    this.name = "Modem";
 
-	this.interfaces = properties.Interfaces.deep_unpack();
+	this.set_interfaces(properties.Interfaces.deep_unpack());
+
+	this.set_status(this.powered, this.online);
 
 	this.prop_sig = this.proxy.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
 		if (property == 'Powered')
 		    this.set_powered(value.deep_unpack());
+		if (property == 'Online')
+		    this.set_online(value.deep_unpack());
 		if (property == 'Manufacturer')
 		    this.set_manufacturer(value.deep_unpack());
 		if (property == 'Model')
 		    this.set_model(value.deep_unpack());
 		if (property == 'Name')
 		    this.set_name(value.deep_unpack());
+		if (property == 'Interfaces')
+		    this.set_interfaces(value.deep_unpack());
 	}));
-
     },
 
     CreateMenuItem: function() {
@@ -122,6 +128,12 @@ const ModemItem = new Lang.Class({
     set_powered: function(powered) {
 	this.powered = powered;
 	this.sw.setToggleState(powered);
+	this.set_status(powered, this.online);
+    },
+
+    set_online: function(online) {
+	this.online = online;
+	this.set_status(this.powered, online);
     },
 
     set_manufacturer: function(manufacturer) {
@@ -146,6 +158,24 @@ const ModemItem = new Lang.Class({
     set_name: function(name) {
 	this.name = name;
 	this.sw.label.text = this.name;
+    },
+
+    set_interfaces: function(interfaces) {
+	this.interfaces = interfaces;
+    },
+
+    set_status: function(powered, online) {
+	if (powered == false)
+	    this.status = _("Disabled");
+	else {
+	    if (online == false)
+		this.status = _("Enabled");
+	    else
+		this.status = _("Online");
+	}
+
+	if (this.status_label)
+	    this.status_label.text = this.status;
     },
 
     UpdateProperties: function(properties) {
