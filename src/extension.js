@@ -237,7 +237,9 @@ const ModemItem = new Lang.Class({
 			this.status = _("PUK Required");
 		    else
 			this.status = this.sim_pin +_("Required");
+		    _extension.setIcon('dialog-password-symbolic');
 		} else {
+		    _extension.setIcon('network-cellular-umts-symbolic');
 		    if (this.online == true)
 			this.status = _("Online");
 		    else
