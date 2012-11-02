@@ -37,7 +37,28 @@ const BUS_NAME = 'org.ofono';
 
 let _extension = null;
 
-/* org.ofono.Mdem Interface */
+/* org.ofono.SimManager Interface */
+const SimManagerInterface = <interface name="org.ofono.SimManager">
+<method name="GetProperties">
+    <arg name="properties" type="a{sv}" direction="out"/>
+</method>
+<method name="SetProperty">
+    <arg name="name" type="s" direction="in"/>
+    <arg name="value" type="v" direction="in"/>
+</method>
+<method name="EnterPin">
+    <arg name="type" type="s" direction="in"/>
+    <arg name="pin" type="s" direction="in"/>
+</method>
+<signal name="PropertyChanged">
+    <arg name="name" type="s"/>
+    <arg name="value" type="v"/>
+</signal>
+</interface>;
+
+const SimManagerProxy = Gio.DBusProxy.makeProxyWrapper(SimManagerInterface);
+
+/* org.ofono.Modem Interface */
 const ModemInterface = <interface name="org.ofono.Modem">
 <method name="SetProperty">
     <arg name="name" type="s" direction="in"/>
@@ -58,11 +79,13 @@ const ModemItem = new Lang.Class({
 	this.path = path;
 	this.proxy = new ModemProxy(Gio.DBus.system, BUS_NAME, path);
 
-	this.powered	= properties.Powered.deep_unpack();
-	this.online	= properties.Online.deep_unpack();
-	this.type	= properties.Type.deep_unpack();
-	this.interfaces	= null;
-	this.status	= _("Disabled");
+	this.powered	 = properties.Powered.deep_unpack();
+	this.online	 = properties.Online.deep_unpack();
+	this.type	 = properties.Type.deep_unpack();
+	this.interfaces	 = null;
+	this.sim_present = false;
+	this.sim_pin	 = null;
+	this.status	 = _("Disabled");
 
 	if (properties.Name)
 	    this.name	= properties.Name.deep_unpack();
@@ -78,8 +101,6 @@ const ModemItem = new Lang.Class({
 	    this.name = "Modem";
 
 	this.set_interfaces(properties.Interfaces.deep_unpack());
-
-	this.set_status(this.powered, this.online);
 
 	this.prop_sig = this.proxy.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
 		if (property == 'Powered')
@@ -122,18 +143,21 @@ const ModemItem = new Lang.Class({
 	this.status_section.addActor(this.status_label, { align: St.Align.END });
 
 	this.Item.addMenuItem(this.status_section);
+
+	this.update_status();
+
 	return this.Item;
     },
 
     set_powered: function(powered) {
 	this.powered = powered;
 	this.sw.setToggleState(powered);
-	this.set_status(powered, this.online);
+	this.update_status();
     },
 
     set_online: function(online) {
 	this.online = online;
-	this.set_status(this.powered, online);
+	this.update_status();
     },
 
     set_manufacturer: function(manufacturer) {
@@ -162,16 +186,64 @@ const ModemItem = new Lang.Class({
 
     set_interfaces: function(interfaces) {
 	this.interfaces = interfaces;
+
+	if (this.interfaces.indexOf('org.ofono.SimManager') == -1)
+	    return;
+
+	this.sim_manager = new SimManagerProxy(Gio.DBus.system, BUS_NAME, this.path);
+
+	this.sim_manager.GetPropertiesRemote(Lang.bind(this, function(result, excp) {
+	/* result contains the exported Properties.
+	 * properties is a dict a{sv}. They can be accessed by
+	 * properties.<Property Name>.deep_unpack() which unpacks the variant.
+	*/
+	    let properties = result[0];
+
+	    this.sim_present	= properties.Present.deep_unpack();
+	    this.sim_pin	= properties.PinRequired.deep_unpack();
+
+	    this.update_status();
+	}));
+
+	this.sim_prop_sig = this.sim_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
+		if (property == 'Present')
+		    this.set_sim_present(value.deep_unpack());
+		if (property == 'PinRequired')
+		    this.set_sim_pinrequired(value.deep_unpack());
+	}));
     },
 
-    set_status: function(powered, online) {
-	if (powered == false)
+    set_sim_present: function(present) {
+	this.sim_present = present;
+	this.update_status();
+    },
+
+    set_sim_pinrequired: function(pinrequired) {
+	this.sim_pin = pinrequired;
+	this.update_status();
+    },
+
+    update_status: function() {
+	if (this.powered == false)
 	    this.status = _("Disabled");
 	else {
-	    if (online == false)
-		this.status = _("Enabled");
-	    else
-		this.status = _("Online");
+	    if (this.sim_present == false)
+		this.status = _("No SIM");
+	    else {
+		if (this.sim_pin && this.sim_pin != "none") {
+		    if (this.sim_pin == "pin")
+			this.status = _("PIN Required");
+		    else if (this.sim_pin == "puk")
+			this.status = _("PUK Required");
+		    else
+			this.status = this.sim_pin +_("Required");
+		} else {
+		    if (this.online == true)
+			this.status = _("Online");
+		    else
+			this.status = _("SIM Ready");
+		}
+	    }
 	}
 
 	if (this.status_label)
@@ -185,6 +257,9 @@ const ModemItem = new Lang.Class({
     CleanUp: function() {
 	if (this.prop_sig)
 	    this.proxy.disconnectSignal(this.prop_sig);
+
+	if (this.sim_prop_sig)
+	    this.sim_manager.disconnectSignal(this.sim_prop_sig);
 
 	if (this.Item)
 	    this.Item.destroy();
