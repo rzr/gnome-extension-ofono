@@ -79,13 +79,14 @@ const ModemItem = new Lang.Class({
 	this.path = path;
 	this.proxy = new ModemProxy(Gio.DBus.system, BUS_NAME, path);
 
-	this.powered	 = properties.Powered.deep_unpack();
-	this.online	 = properties.Online.deep_unpack();
-	this.type	 = properties.Type.deep_unpack();
-	this.interfaces	 = null;
-	this.sim_present = false;
-	this.sim_pin	 = null;
-	this.status	 = _("Disabled");
+	this.powered		= properties.Powered.deep_unpack();
+	this.online		= properties.Online.deep_unpack();
+	this.type		= properties.Type.deep_unpack();
+	this.interfaces		= null;
+	this.sim_present	= false;
+	this.sim_pin		= null;
+	this.sim_pin_retry	= null;
+	this.status		= _("Disabled");
 
 	if (properties.Name)
 	    this.name	= properties.Name.deep_unpack();
@@ -201,6 +202,7 @@ const ModemItem = new Lang.Class({
 
 	    this.sim_present	= properties.Present.deep_unpack();
 	    this.sim_pin	= properties.PinRequired.deep_unpack();
+	    this.sim_pin_retry	= properties.Retries.deep_unpack();
 
 	    this.update_status();
 	}));
@@ -210,6 +212,8 @@ const ModemItem = new Lang.Class({
 		    this.set_sim_present(value.deep_unpack());
 		if (property == 'PinRequired')
 		    this.set_sim_pinrequired(value.deep_unpack());
+		if (property == 'Retries')
+		    this.set_sim_pin_retries(value.deep_unpack());
 	}));
     },
 
@@ -221,6 +225,10 @@ const ModemItem = new Lang.Class({
     set_sim_pinrequired: function(pinrequired) {
 	this.sim_pin = pinrequired;
 	this.update_status();
+    },
+
+    set_sim_pin_retries: function(retries) {
+	this.sim_pin_retry = retries;
     },
 
     update_status: function() {
