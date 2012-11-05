@@ -42,7 +42,7 @@ let _extension = null;
 const PinDialog = new Lang.Class({
     Name: 'PinDialog',
     Extends: ModalDialog.ModalDialog,
-    _init: function(modem, pin_type) {
+    _init: function(modem, pin_type, retries) {
 	this.parent({ styleClass: 'prompt-dialog' });
 	this.modem = modem;
 	this.pin_type = pin_type;
@@ -81,15 +81,11 @@ const PinDialog = new Lang.Class({
 
 	/* Set the description lable according to the pin type */
 	if (pin_type == "pin")
-	    this.descriptionLabel.text = "PIN required to unlock SIM";
+	    this.descriptionLabel.text = "PIN required to unlock SIM." ;
 	else if (pin_type == "puk")
 	    this.descriptionLabel.text = "PUK required to unlock PIN";
 	else
 	    this.descriptionLabel.text = pin_type + "required to access SIM";
-
-        //this.descriptionLabel.style = 'height: 3em';
-        //this.descriptionLabel.clutter_text.line_wrap = true;
-
 
 	/* Create a box container */
         this.pinBox = new St.BoxLayout({ vertical: false });
@@ -111,7 +107,6 @@ const PinDialog = new Lang.Class({
 	else
 	    this.pinLabel.text = pin_type;
 
-
 	/* PIN Entry */
         this._pinEntry = new St.Entry({ style_class: 'prompt-dialog-password-entry', text: "", can_focus: true });
         ShellEntry.addContextMenu(this._pinEntry, { isPassword: true });
@@ -123,7 +118,16 @@ const PinDialog = new Lang.Class({
 
 	this._pinEntry.clutter_text.connect('text-changed', Lang.bind(this, this.UpdateOK));
 
-        this.okButton = { label:  _("OK"),
+	/* Add a Retry Label in the Message */
+        this.retryLabel = new St.Label({ style_class: 'prompt-dialog-description', text: "" });
+        this.messageBox.add(this.retryLabel, { y_fill: true, y_align: St.Align.MIDDLE, expand: true });
+
+	/* Set the description lable according to the pin type */
+
+	if (pin_type == 'pin' || pin_type == 'puk' || pin_type == 'pin2' || pin_type == 'puk2')
+	    this.retryLabel.text = retries[pin_type] + " attempts left to Unlock.";
+
+        this.okButton = { label:  _("Unlock"),
                            action: Lang.bind(this, this.onOk),
                            key:    Clutter.KEY_Return,
                          };
@@ -140,7 +144,9 @@ const PinDialog = new Lang.Class({
 	}));
 
 	this.open();
+
 	this.UpdateOK();
+
 	global.stage.set_key_focus(this._pinEntry);
     },
 
@@ -149,9 +155,9 @@ const PinDialog = new Lang.Class({
 
 	Mainloop.source_remove(this.timeoutid);
 
-	this.modem.EnterPinRemote(this.pin_type, this._pinEntry.get_text());
-
-	this.destroy();
+	this.modem.EnterPinRemote(this.pin_type, this._pinEntry.get_text(),  Lang.bind(this, function(result, excp) { 
+	    this.destroy();
+	}));
     },
 
     onCancel: function() {
@@ -346,15 +352,25 @@ const ModemItem = new Lang.Class({
 	*/
 	    let properties = result[0];
 
-	    this.sim_present	= properties.Present.deep_unpack();
-	    this.sim_pin	= properties.PinRequired.deep_unpack();
-	    this.sim_pin_retry	= properties.Retries.deep_unpack();
-	    this.dialog		= null;
+	    if (properties.Present)
+		this.sim_present	= properties.Present.deep_unpack();
+	    else
+		this.sim_present	= null;
 
-	    if (this.sim_pin && this.sim_pin != 'none')
-		this.dialog = new PinDialog(this.sim_manager, this.sim_pin);
+	    if (properties.PinRequired)
+		this.sim_pin		= properties.PinRequired.deep_unpack();
+	    else
+		this.sim_pin		= null;
+
+	    if (properties.Retries)
+		this.sim_pin_retry	= properties.Retries.deep_unpack();
+	    else
+		this.sim_pin_retry	= null;
+
+	    this.dialog			= null;
 
 	    this.update_status();
+	    this.enter_pin();
 	}));
 
 	this.sim_prop_sig = this.sim_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
@@ -375,13 +391,23 @@ const ModemItem = new Lang.Class({
     set_sim_pinrequired: function(pinrequired) {
 	this.sim_pin = pinrequired;
 	this.update_status();
-
-	if (this.sim_pin != 'none' && this.dialog == null)
-	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin);
+	this.enter_pin();
     },
 
     set_sim_pin_retries: function(retries) {
 	this.sim_pin_retry = retries;
+	this.enter_pin();
+    },
+
+    enter_pin: function() {
+	if (this.sim_pin == null || this.sim_pin_retry == null)
+	    return;
+
+	if (this.sim_pin == 'none')
+	    return;
+
+	if (this.sim_pin_retry[this.sim_pin] > 0)
+	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin, this.sim_pin_retry);
     },
 
     update_status: function() {
@@ -417,8 +443,8 @@ const ModemItem = new Lang.Class({
 	if (this.sim_pin && this.sim_pin == "none")
 	    return;
 
-	if (this.sim_manager)
-	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin);
+	if (this.sim_manager && this.sim_pin && (this.sim_pin_retry[this.sim_pin] >= 0))
+	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin, this.sim_pin_retry);
     },
 
     UpdateProperties: function(properties) {
@@ -434,6 +460,10 @@ const ModemItem = new Lang.Class({
 
 	if (this.Item)
 	    this.Item.destroy();
+
+	if (this.dialog)
+	    this.dialog.destroy();
+
     }
 });
 
