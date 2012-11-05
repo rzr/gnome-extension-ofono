@@ -34,8 +34,152 @@ const CheckBox = imports.ui.checkBox;
 const _ = Gettext.gettext;
 
 const BUS_NAME = 'org.ofono';
+const DIALOG_TIMEOUT = 120*1000;
 
 let _extension = null;
+
+/* UI PIN DIALOG SECTION */
+const PinDialog = new Lang.Class({
+    Name: 'PinDialog',
+    Extends: ModalDialog.ModalDialog,
+    _init: function(modem, pin_type) {
+	this.parent({ styleClass: 'prompt-dialog' });
+	this.modem = modem;
+	this.pin_type = pin_type;
+
+	/* Create the main container of the dialog */
+	let mainContentBox = new St.BoxLayout({ style_class: 'prompt-dialog-main-layout', vertical: false });
+        this.contentLayout.add(mainContentBox,
+                               { x_fill: true,
+                                 y_fill: true });
+
+	/* Add the dialog password icon */
+        let icon = new St.Icon({ icon_name: 'dialog-password-symbolic' });
+        mainContentBox.add(icon,
+                           { x_fill:  true,
+                             y_fill:  false,
+                             x_align: St.Align.END,
+                             y_align: St.Align.START });
+
+	/* Add a Message to the container */
+        this.messageBox = new St.BoxLayout({ style_class: 'prompt-dialog-message-layout',
+                                            vertical: true });
+        mainContentBox.add(this.messageBox,
+                           { y_align: St.Align.START });
+
+	/* Add a Header Label in the Message */
+        let subjectLabel = new St.Label({ style_class: 'prompt-dialog-headline',
+					  text: "Authentication required to access SIM"});
+
+        this.messageBox.add(subjectLabel,
+                       { y_fill:  false,
+                         y_align: St.Align.START });
+
+	/* Add a Description Label in the Message */
+        this.descriptionLabel = new St.Label({ style_class: 'prompt-dialog-description', text: "" });
+        this.messageBox.add(this.descriptionLabel, { y_fill: true, y_align: St.Align.MIDDLE, expand: true });
+
+	/* Set the description lable according to the pin type */
+	if (pin_type == "pin")
+	    this.descriptionLabel.text = "PIN required to unlock SIM";
+	else if (pin_type == "puk")
+	    this.descriptionLabel.text = "PUK required to unlock PIN";
+	else
+	    this.descriptionLabel.text = pin_type + "required to access SIM";
+
+        //this.descriptionLabel.style = 'height: 3em';
+        //this.descriptionLabel.clutter_text.line_wrap = true;
+
+
+	/* Create a box container */
+        this.pinBox = new St.BoxLayout({ vertical: false });
+	this.messageBox.add(this.pinBox, { y_fill: true, y_align: St.Align.MIDDLE, expand: true });
+
+	/* PIN Label */
+        this.pinLabel = new St.Label(({ style_class: 'prompt-dialog-description', text: ""}));
+        this.pinBox.add(this.pinLabel,  { y_fill: false, y_align: St.Align.START });
+
+	/* Set the description lable according to the pin type */
+	if (pin_type == "pin")
+	    this.pinLabel.text = "PIN ";
+	else if (pin_type == "puk")
+	    this.pinLabel.text = "PUK ";
+	else if (pin_type == "pin2")
+	    this.pinLabel.text = "PIN2 ";
+	else if (pin_type == "puk2")
+	    this.pinLabel.text = "PUK2 ";
+	else
+	    this.pinLabel.text = pin_type;
+
+
+	/* PIN Entry */
+        this._pinEntry = new St.Entry({ style_class: 'prompt-dialog-password-entry', text: "", can_focus: true });
+        ShellEntry.addContextMenu(this._pinEntry, { isPassword: true });
+
+        this.pinBox.add(this._pinEntry, {expand: true, y_align: St.Align.END });
+	this._pinEntry.clutter_text.set_password_char('\u25cf');
+
+	this._pinEntry.clutter_text.connect('activate', Lang.bind(this, this.onOk));
+
+	this._pinEntry.clutter_text.connect('text-changed', Lang.bind(this, this.UpdateOK));
+
+        this.okButton = { label:  _("OK"),
+                           action: Lang.bind(this, this.onOk),
+                           key:    Clutter.KEY_Return,
+                         };
+
+        this.setButtons([{ label: _("Cancel"),
+                           action: Lang.bind(this, this.onCancel),
+                           key:    Clutter.KEY_Escape,
+                         },
+                         this.okButton]);
+
+	this.timeoutid = Mainloop.timeout_add(DIALOG_TIMEOUT, Lang.bind(this, function() {
+	    this.onCancel();
+	    return false;
+	}));
+
+	this.open();
+	this.UpdateOK();
+	global.stage.set_key_focus(this._pinEntry);
+    },
+
+    onOk: function() {
+	this.close();
+
+	Mainloop.source_remove(this.timeoutid);
+
+	this.modem.EnterPinRemote(this.pin_type, this._pinEntry.get_text());
+
+	this.destroy();
+    },
+
+    onCancel: function() {
+	this.close();
+
+	Mainloop.source_remove(this.timeoutid);
+
+	this.destroy();
+    },
+
+    UpdateOK: function() {
+	let pass = this._pinEntry.get_text();
+	let enable = false;
+
+	if (pass.length >= 4)
+	    enable = true;
+
+	if (enable) {
+	    this.okButton.button.reactive = true;
+	    this.okButton.button.can_focus = true;
+	    this.okButton.button.remove_style_pseudo_class('disabled');
+	} else {
+	    this.okButton.button.reactive = false;
+	    this.okButton.button.can_focus = false;
+	    this.okButton.button.add_style_pseudo_class('disabled');
+	}
+    }
+});
 
 /* org.ofono.SimManager Interface */
 const SimManagerInterface = <interface name="org.ofono.SimManager">
@@ -147,6 +291,8 @@ const ModemItem = new Lang.Class({
 
 	this.update_status();
 
+	this.Item.connect('activate', Lang.bind(this, this.clicked));
+
 	return this.Item;
     },
 
@@ -203,6 +349,10 @@ const ModemItem = new Lang.Class({
 	    this.sim_present	= properties.Present.deep_unpack();
 	    this.sim_pin	= properties.PinRequired.deep_unpack();
 	    this.sim_pin_retry	= properties.Retries.deep_unpack();
+	    this.dialog		= null;
+
+	    if (this.sim_pin && this.sim_pin != 'none')
+		this.dialog = new PinDialog(this.sim_manager, this.sim_pin);
 
 	    this.update_status();
 	}));
@@ -225,6 +375,9 @@ const ModemItem = new Lang.Class({
     set_sim_pinrequired: function(pinrequired) {
 	this.sim_pin = pinrequired;
 	this.update_status();
+
+	if (this.sim_pin != 'none' && this.dialog == null)
+	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin);
     },
 
     set_sim_pin_retries: function(retries) {
@@ -258,6 +411,14 @@ const ModemItem = new Lang.Class({
 
 	if (this.status_label)
 	    this.status_label.text = this.status;
+    },
+
+    clicked: function() {
+	if (this.sim_pin && this.sim_pin == "none")
+	    return;
+
+	if (this.sim_manager)
+	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin);
     },
 
     UpdateProperties: function(properties) {
