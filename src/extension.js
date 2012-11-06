@@ -567,6 +567,8 @@ const ofonoManager = new Lang.Class({
 		return;
 	    }
 
+	    this.no_modems(false);
+
 	    this.modems[path] = {modem: new ModemItem(path, properties), sep: new PopupMenu.PopupSeparatorMenuItem()};
 	    this.menu.addMenuItem(this.modems[path].modem.CreateMenuItem());
 	    this.menu.addMenuItem(this.modems[path].sep);
@@ -580,12 +582,19 @@ const ofonoManager = new Lang.Class({
 	    this.modems[path].modem.CleanUp();
 	    this.modems[path].sep.destroy();
 	    delete this.modems[path];
+
+
+	    let mod_list = Object.getOwnPropertyNames(this.modems)
+	    if (mod_list.length == 0) {
+		this.no_modems(true);
+	    }
 	}));
 
 	this.manager.GetModemsRemote(Lang.bind(this, this.get_modems));
     },
 
     ofonoVanished: function() {
+
 	if (this.modems) {
 	    for each (let path in Object.keys(this.modems)) {
 		this.modems[path].modem.CleanUp();
@@ -596,6 +605,8 @@ const ofonoManager = new Lang.Class({
 	}
 
 	this.setIcon('network-cellular-umts-symbolic');
+
+	this.no_modems(false);
 
 	if (this._no_ofono)
 	    return;
@@ -614,6 +625,11 @@ const ofonoManager = new Lang.Class({
 	*/
 	let modem_array = result[0];
 
+	if (modem_array.length == 0) {
+	    this.no_modems(true);
+	} else
+	    this.no_modems(false);
+
 	for each (let [path, properties] in modem_array) {
 	    if (Object.getOwnPropertyDescriptor(this.modems, path)) {
 		this.modems[path].modem.UpdateProperties(properties);
@@ -621,6 +637,24 @@ const ofonoManager = new Lang.Class({
 		this.modems[path] = { modem: new ModemItem(path, properties), sep: new PopupMenu.PopupSeparatorMenuItem()};
 		this.menu.addMenuItem(this.modems[path].modem.CreateMenuItem());
 		this.menu.addMenuItem(this.modems[path].sep);
+	    }
+	}
+    },
+
+    no_modems: function(add) {
+	if (add) {
+	    this.no_modems_item = new PopupMenu.PopupMenuSection();
+	    let no_modem_label = new PopupMenu.PopupMenuItem(_("No Modems detected"),
+				{ reactive: false, style_class: 'popup-inactive-menu-item' });
+
+	    this.no_modems_item.addMenuItem(no_modem_label);
+	    this.menu.addMenuItem(this.no_modems_item);
+
+	    _extension.setIcon('network-cellular-umts-symbolic');
+	} else {
+	    if (this.no_modems_item) {
+		this.no_modems_item.destroy();
+		this.no_modems_item = null;
 	    }
 	}
     }
