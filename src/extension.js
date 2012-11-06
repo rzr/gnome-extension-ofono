@@ -99,11 +99,11 @@ const PinDialog = new Lang.Class({
 	if (pin_type == "pin")
 	    this.pinLabel.text = "PIN ";
 	else if (pin_type == "puk")
-	    this.pinLabel.text = "PUK ";
+	    this.pinLabel.text = "PUK        ";
 	else if (pin_type == "pin2")
 	    this.pinLabel.text = "PIN2 ";
 	else if (pin_type == "puk2")
-	    this.pinLabel.text = "PUK2 ";
+	    this.pinLabel.text = "PUK2        ";
 	else
 	    this.pinLabel.text = pin_type;
 
@@ -114,9 +114,32 @@ const PinDialog = new Lang.Class({
         this.pinBox.add(this._pinEntry, {expand: true, y_align: St.Align.END });
 	this._pinEntry.clutter_text.set_password_char('\u25cf');
 
-	this._pinEntry.clutter_text.connect('activate', Lang.bind(this, this.onOk));
-
 	this._pinEntry.clutter_text.connect('text-changed', Lang.bind(this, this.UpdateOK));
+
+	/* New PIN Label */
+	if (pin_type == 'puk' || pin_type == 'puk2') {
+            this.newpinBox = new St.BoxLayout({ vertical: false });
+	    this.messageBox.add(this.newpinBox, { y_fill: true, y_align: St.Align.MIDDLE, expand: true });
+
+            this.newpinLabel = new St.Label(({ style_class: 'prompt-dialog-description', text: ""}));
+            this.newpinBox.add(this.newpinLabel,  { y_fill: false, y_align: St.Align.START });
+
+	    /* Set the description lable according to the pin type */
+	    if (pin_type == "puk")
+		this.newpinLabel.text = "New PIN ";
+	    else if (pin_type == "puk2")
+		this.newpinLabel.text = "New PIN2 ";
+
+	    /* PIN Entry */
+            this._newpinEntry = new St.Entry({ style_class: 'prompt-dialog-password-entry', text: "", can_focus: true });
+            ShellEntry.addContextMenu(this._newpinEntry, { isPassword: true });
+
+            this.newpinBox.add(this._newpinEntry, {expand: true, y_align: St.Align.END });
+	    this._newpinEntry.clutter_text.set_password_char('\u25cf');
+
+	    this._newpinEntry.clutter_text.connect('activate', Lang.bind(this, this.onOk));
+	    this._newpinEntry.clutter_text.connect('text-changed', Lang.bind(this, this.UpdateOK));
+	}
 
 	/* Add a Retry Label in the Message */
         this.retryLabel = new St.Label({ style_class: 'prompt-dialog-description', text: "" });
@@ -155,9 +178,17 @@ const PinDialog = new Lang.Class({
 
 	Mainloop.source_remove(this.timeoutid);
 
-	this.modem.EnterPinRemote(this.pin_type, this._pinEntry.get_text(),  Lang.bind(this, function(result, excp) { 
-	    this.destroy();
-	}));
+	if (this.pin_type == 'pin' || this.pin_type == 'pin2') {
+	    this.modem.EnterPinRemote(this.pin_type, this._pinEntry.get_text(),  Lang.bind(this, function(result, excp) { 
+		this.destroy();
+	    }));
+	}
+
+	if (this.pin_type == 'puk' || this.pin_type == 'puk2') {
+	    this.modem.ResetPinRemote(this.pin_type, this._pinEntry.get_text(), this._newpinEntry.get_text(), Lang.bind(this, function(result, excp) {
+		this.destroy();
+	    }));
+	}
     },
 
     onCancel: function() {
@@ -169,16 +200,32 @@ const PinDialog = new Lang.Class({
     },
 
     UpdateOK: function() {
-	let pass = this._pinEntry.get_text();
 	let enable = false;
 
-	if (pass.length >= 4)
-	    enable = true;
+	if (this.pin_type == 'pin' || this.pin_type == 'pin2') {
+	    let pass = this._pinEntry.get_text();
+
+	    if (pass.length >= 4)
+		enable = true;
+	    else
+		enable = false;
+	}
+
+	if (this.pin_type == 'puk' || this.pin_type == 'puk2') {
+	    let pass = this._pinEntry.get_text();
+	    let newpin = this._newpinEntry.get_text();
+
+	    if (pass.length >= 8 && newpin.length >=4)
+		enable = true;
+	    else
+		enable = false;
+	}
 
 	if (enable) {
 	    this.okButton.button.reactive = true;
 	    this.okButton.button.can_focus = true;
 	    this.okButton.button.remove_style_pseudo_class('disabled');
+	    this._pinEntry.clutter_text.connect('activate', Lang.bind(this, this.onOk));
 	} else {
 	    this.okButton.button.reactive = false;
 	    this.okButton.button.can_focus = false;
@@ -199,6 +246,11 @@ const SimManagerInterface = <interface name="org.ofono.SimManager">
 <method name="EnterPin">
     <arg name="type" type="s" direction="in"/>
     <arg name="pin" type="s" direction="in"/>
+</method>
+<method name="ResetPin">
+    <arg name="type" type="s" direction="in"/>
+    <arg name="puk" type="s" direction="in"/>
+    <arg name="newpin" type="s" direction="in"/>
 </method>
 <signal name="PropertyChanged">
     <arg name="name" type="s"/>
