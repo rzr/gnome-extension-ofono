@@ -539,7 +539,7 @@ const ModemItem = new Lang.Class({
 
 	if (this.bearer == 'edge')
 	    _extension.setIcon('network-cellular-edge-symbolic');
-	else if (this.bearer == 'hsdpa' || this.bearer == 'hsupa' || this.bearer == 'hspa')
+	else if (this.bearer == 'hsdpa' || this.bearer == 'hsupa' || this.bearer == 'hspa' || this.bearer == 'umts')
 	    _extension.setIcon('network-cellular-3g-symbolic');
 	else if (this.bearer == 'lte')
 	    _extension.setIcon('network-cellular-4g-symbolic');
