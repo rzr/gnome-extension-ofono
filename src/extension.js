@@ -234,6 +234,19 @@ const PinDialog = new Lang.Class({
     }
 });
 
+/* org.ofono.ConnectionManager Interface */
+const ConnectionManagerInterface = <interface name="org.ofono.ConnectionManager">
+<method name="GetProperties">
+    <arg name="properties" type="a{sv}" direction="out"/>
+</method>
+<signal name="PropertyChanged">
+    <arg name="name" type="s"/>
+    <arg name="value" type="v"/>
+</signal>
+</interface>;
+
+const ConnectionManagerProxy = Gio.DBusProxy.makeProxyWrapper(ConnectionManagerInterface);
+
 /* org.ofono.SimManager Interface */
 const SimManagerInterface = <interface name="org.ofono.SimManager">
 <method name="GetProperties">
@@ -392,47 +405,69 @@ const ModemItem = new Lang.Class({
     set_interfaces: function(interfaces) {
 	this.interfaces = interfaces;
 
-	if (this.interfaces.indexOf('org.ofono.SimManager') == -1)
-	    return;
+	if (this.interfaces.indexOf('org.ofono.SimManager') != -1) {
 
-	this.sim_manager = new SimManagerProxy(Gio.DBus.system, BUS_NAME, this.path);
+	    this.sim_manager = new SimManagerProxy(Gio.DBus.system, BUS_NAME, this.path);
 
-	this.sim_manager.GetPropertiesRemote(Lang.bind(this, function(result, excp) {
-	/* result contains the exported Properties.
-	 * properties is a dict a{sv}. They can be accessed by
-	 * properties.<Property Name>.deep_unpack() which unpacks the variant.
-	*/
-	    let properties = result[0];
+	    this.sim_manager.GetPropertiesRemote(Lang.bind(this, function(result, excp) {
+		/* result contains the exported Properties.
+		 * properties is a dict a{sv}. They can be accessed by
+		 * properties.<Property Name>.deep_unpack() which unpacks the variant.
+		 */
+		let properties = result[0];
 
-	    if (properties.Present)
-		this.sim_present	= properties.Present.deep_unpack();
-	    else
-		this.sim_present	= null;
+		if (properties.Present)
+		    this.sim_present	= properties.Present.deep_unpack();
+		else
+		    this.sim_present	= null;
 
-	    if (properties.PinRequired)
-		this.sim_pin		= properties.PinRequired.deep_unpack();
-	    else
-		this.sim_pin		= null;
+		if (properties.PinRequired)
+		    this.sim_pin	= properties.PinRequired.deep_unpack();
+		else
+		    this.sim_pin	= null;
 
-	    if (properties.Retries)
-		this.sim_pin_retry	= properties.Retries.deep_unpack();
-	    else
-		this.sim_pin_retry	= null;
+		if (properties.Retries)
+		    this.sim_pin_retry	= properties.Retries.deep_unpack();
+		else
+		    this.sim_pin_retry	= null;
 
-	    this.dialog			= null;
+		this.dialog		= null;
 
-	    this.update_status();
-	    this.enter_pin();
-	}));
+		this.update_status();
+		this.enter_pin();
+	    }));
 
-	this.sim_prop_sig = this.sim_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
+	    this.sim_prop_sig = this.sim_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
 		if (property == 'Present')
 		    this.set_sim_present(value.deep_unpack());
 		if (property == 'PinRequired')
 		    this.set_sim_pinrequired(value.deep_unpack());
 		if (property == 'Retries')
 		    this.set_sim_pin_retries(value.deep_unpack());
-	}));
+	    }));
+	}
+
+	if (this.interfaces.indexOf('org.ofono.ConnectionManager') != -1) {
+
+	    this.connection_manager = new ConnectionManagerProxy(Gio.DBus.system, BUS_NAME, this.path);
+
+	    this.connection_manager.GetPropertiesRemote(Lang.bind(this, function(result, excp) {
+		/* result contains the exported Properties.
+		 * properties is a dict a{sv}. They can be accessed by
+		 * properties.<Property Name>.deep_unpack() which unpacks the variant.
+		 */
+		let properties = result[0];
+
+		if (properties.Bearer)
+		    this.set_bearer(properties.Bearer.deep_unpack());
+	    }));
+
+	    this.sim_prop_sig = this.connection_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
+		if (property == 'Bearer')
+		    this.set_bearer(value.deep_unpack());
+	    }));
+	}
+
     },
 
     set_sim_present: function(present) {
@@ -463,12 +498,14 @@ const ModemItem = new Lang.Class({
     },
 
     update_status: function() {
-	if (this.powered == false)
+	if (this.powered == false) {
 	    this.status = _("Disabled");
-	else {
-	    if (this.sim_present == false)
+	    _extension.setIcon('network-cellular-umts-symbolic');
+	}else {
+	    if (this.sim_present == false) {
 		this.status = _("No SIM");
-	    else {
+		_extension.setIcon('network-cellular-umts-symbolic');
+	    } else {
 		if (this.sim_pin && this.sim_pin != "none") {
 		    if (this.sim_pin == "pin")
 			this.status = _("PIN Required");
@@ -478,7 +515,7 @@ const ModemItem = new Lang.Class({
 			this.status = this.sim_pin +_("Required");
 		    _extension.setIcon('dialog-password-symbolic');
 		} else {
-		    _extension.setIcon('network-cellular-umts-symbolic');
+		    _extension.setIcon('network-cellular-gprs-symbolic');
 		    if (this.online == true)
 			this.status = _("Online");
 		    else
@@ -489,6 +526,25 @@ const ModemItem = new Lang.Class({
 
 	if (this.status_label)
 	    this.status_label.text = this.status;
+    },
+
+    set_bearer: function(bearer) {
+	if (bearer == null)
+	    return;
+
+	this.bearer = bearer;
+
+	if (this.bearer == 'none')
+	    return;
+
+	if (this.bearer == 'edge')
+	    _extension.setIcon('network-cellular-edge-symbolic');
+	else if (this.bearer == 'hsdpa' || this.bearer == 'hsupa' || this.bearer == 'hspa')
+	    _extension.setIcon('network-cellular-3g-symbolic');
+	else if (this.bearer == 'lte')
+	    _extension.setIcon('network-cellular-4g-symbolic');
+	else
+	    _extension.setIcon('network-cellular-gprs-symbolic');
     },
 
     clicked: function() {
