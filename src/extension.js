@@ -302,6 +302,8 @@ const ModemItem = new Lang.Class({
 	this.sim_pin		= null;
 	this.sim_pin_retry	= null;
 	this.status		= _("Disabled");
+	this.bearer		= "none";
+	this.attached		= false;
 
 	if (properties.Name)
 	    this.name	= properties.Name.deep_unpack();
@@ -458,11 +460,16 @@ const ModemItem = new Lang.Class({
 		 */
 		let properties = result[0];
 
+		if (properties.Attached)
+		    this.set_attached(properties.Attached.deep_unpack());
+
 		if (properties.Bearer)
 		    this.set_bearer(properties.Bearer.deep_unpack());
 	    }));
 
 	    this.sim_prop_sig = this.connection_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
+		if (property == 'Attached')
+		    this.set_attached(value.deep_unpack());
 		if (property == 'Bearer')
 		    this.set_bearer(value.deep_unpack());
 	    }));
@@ -516,8 +523,8 @@ const ModemItem = new Lang.Class({
 		    _extension.setIcon('dialog-password-symbolic');
 		} else {
 		    _extension.setIcon('network-cellular-gprs-symbolic');
-		    if (this.online == true)
-			this.status = _("Online");
+		    if (this.attached == true)
+			this.status = _("Available");
 		    else
 			this.status = _("SIM Ready");
 		}
@@ -528,23 +535,13 @@ const ModemItem = new Lang.Class({
 	    this.status_label.text = this.status;
     },
 
+    set_attached: function(attached) {
+	this.attached = attached;
+	this.update_status();
+    },
+
     set_bearer: function(bearer) {
-	if (bearer == null)
-	    return;
-
 	this.bearer = bearer;
-
-	if (this.bearer == 'none')
-	    return;
-
-	if (this.bearer == 'edge')
-	    _extension.setIcon('network-cellular-edge-symbolic');
-	else if (this.bearer == 'hsdpa' || this.bearer == 'hsupa' || this.bearer == 'hspa' || this.bearer == 'umts')
-	    _extension.setIcon('network-cellular-3g-symbolic');
-	else if (this.bearer == 'lte')
-	    _extension.setIcon('network-cellular-4g-symbolic');
-	else
-	    _extension.setIcon('network-cellular-gprs-symbolic');
     },
 
     clicked: function() {
