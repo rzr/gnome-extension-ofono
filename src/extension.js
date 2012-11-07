@@ -38,6 +38,47 @@ const DIALOG_TIMEOUT = 120*1000;
 
 let _extension = null;
 
+const State = {
+    DISABLED:0,
+    NOSIM:1,
+    PINREQUIRED:2,
+    PUKREQUIRED:3,
+    SIMREADY:4,
+    AVAILABLE:5,
+    GSM:6,
+    EDGE:7,
+    UMTS:8,
+    HSPA:9,
+    LTE:10
+};
+
+function status_to_string(status) {
+    switch(status) {
+    case State.DISABLED:
+	return _("Disabled");
+    case State.NOSIM:
+	return _("No SIM");
+    case State.PINREQUIRED:
+	return _("PIN Required");
+    case State.PUKREQUIRED:
+	return _("PUK Required");
+    case State.SIMREADY:
+	return _("SIM Ready");
+    case State.AVAILABLE:
+	return _("Available");
+    case State.GSM:
+	return _("GPRS Available");
+    case State.EDGE:
+	return _("EDGE Available");
+    case State.UMTS:
+	return _("3G Available");
+    case State.HSPA:
+	return _("High Speed Available");
+    case State.LTE:
+	return _("LTE Available");
+    }
+}
+
 /* UI PIN DIALOG SECTION */
 const PinDialog = new Lang.Class({
     Name: 'PinDialog',
@@ -301,7 +342,7 @@ const ModemItem = new Lang.Class({
 	this.sim_present	= false;
 	this.sim_pin		= null;
 	this.sim_pin_retry	= null;
-	this.status		= _("Disabled");
+	this.status		= State.DISABLED;
 	this.bearer		= "none";
 	this.attached		= false;
 
@@ -357,7 +398,7 @@ const ModemItem = new Lang.Class({
 	this.status_section.addActor(this.label);
 
 	this.status_label = new St.Label();
-	this.status_label.text = this.status;
+	this.status_label.text = status_to_string(this.status);
 	this.status_section.addActor(this.status_label, { align: St.Align.END });
 
 	this.Item.addMenuItem(this.status_section);
@@ -506,33 +547,45 @@ const ModemItem = new Lang.Class({
 
     update_status: function() {
 	if (this.powered == false) {
-	    this.status = _("Disabled");
+	    this.status = State.DISABLED;
 	    _extension.setIcon('network-cellular-umts-symbolic');
 	}else {
 	    if (this.sim_present == false) {
-		this.status = _("No SIM");
+		this.status = State.NOSIM;
 		_extension.setIcon('network-cellular-umts-symbolic');
 	    } else {
 		if (this.sim_pin && this.sim_pin != "none") {
-		    if (this.sim_pin == "pin")
-			this.status = _("PIN Required");
-		    else if (this.sim_pin == "puk")
-			this.status = _("PUK Required");
+		    /* Handle all values? */
+		    if (this.sim_pin == "pin" || this.sim_pin == "pin2")
+			this.status = State.PINREQUIRED;
+		    else if (this.sim_pin == "puk" || this.sim_pin == "puk2")
+			this.status = State.PUKREQUIRED;
 		    else
-			this.status = this.sim_pin +_("Required");
+			this.status = State.PINREQUIRED;
 		    _extension.setIcon('dialog-password-symbolic');
 		} else {
 		    _extension.setIcon('network-cellular-gprs-symbolic');
-		    if (this.attached == true)
-			this.status = _("Available");
-		    else
-			this.status = _("SIM Ready");
+		    if (this.attached == true) {
+			if (this.bearer == 'gsm')
+			    this.status = State.GSM;
+			else if (this.bearer == 'edge')
+			    this.status = State.EDGE;
+			else if (this.bearer == 'umts')
+			    this.status = State.UMTS;
+			else if (this.bearer == 'hsdpa' || this.bearer == 'hsupa' || this.bearer == 'hspa')
+			    this.status = State.HSPA;
+			else if (this.bearer == 'lte')
+			    this.status = State.LTE;
+			else
+			    this.status = State.AVAILABLE;
+		    } else
+			this.status = State.SIMREADY;
 		}
 	    }
 	}
 
 	if (this.status_label)
-	    this.status_label.text = this.status;
+	    this.status_label.text = status_to_string(this.status);
     },
 
     set_attached: function(attached) {
@@ -542,6 +595,7 @@ const ModemItem = new Lang.Class({
 
     set_bearer: function(bearer) {
 	this.bearer = bearer;
+	this.update_status();
     },
 
     clicked: function() {
