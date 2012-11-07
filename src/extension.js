@@ -79,6 +79,29 @@ function status_to_string(status) {
     }
 }
 
+function status_to_icon(status) {
+    switch(status) {
+    case State.DISABLED:
+    case State.NOSIM:
+    case State.SIMREADY:
+	return 'network-cellular-umts-symbolic';
+    case State.PINREQUIRED:
+    case State.PUKREQUIRED:
+	return 'dialog-password-symbolic';
+    case State.AVAILABLE:
+	return 'network-cellular-umts-symbolic';
+    case State.GSM:
+	return 'network-cellular-gprs-symbolic';
+    case State.EDGE:
+	return  'network-cellular-edge-symbolic';
+    case State.UMTS:
+    case State.HSPA:
+	return  'network-cellular-3g-symbolic';
+    case State.LTE:
+	return  'network-cellular-4g-symbolic';
+    }
+}
+
 /* UI PIN DIALOG SECTION */
 const PinDialog = new Lang.Class({
     Name: 'PinDialog',
@@ -515,7 +538,6 @@ const ModemItem = new Lang.Class({
 		    this.set_bearer(value.deep_unpack());
 	    }));
 	}
-
     },
 
     set_sim_present: function(present) {
@@ -541,18 +563,20 @@ const ModemItem = new Lang.Class({
 	if (this.sim_pin == 'none')
 	    return;
 
-	if (this.sim_pin_retry[this.sim_pin] > 0)
+	if (this.sim_pin_retry[this.sim_pin] > 0) {
+	    if (this.dialog)
+		this.dialog.destroy();
+
 	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin, this.sim_pin_retry);
+	}
     },
 
     update_status: function() {
 	if (this.powered == false) {
 	    this.status = State.DISABLED;
-	    _extension.setIcon('network-cellular-umts-symbolic');
 	}else {
 	    if (this.sim_present == false) {
 		this.status = State.NOSIM;
-		_extension.setIcon('network-cellular-umts-symbolic');
 	    } else {
 		if (this.sim_pin && this.sim_pin != "none") {
 		    /* Handle all values? */
@@ -562,9 +586,7 @@ const ModemItem = new Lang.Class({
 			this.status = State.PUKREQUIRED;
 		    else
 			this.status = State.PINREQUIRED;
-		    _extension.setIcon('dialog-password-symbolic');
 		} else {
-		    _extension.setIcon('network-cellular-gprs-symbolic');
 		    if (this.attached == true) {
 			if (this.bearer == 'gsm')
 			    this.status = State.GSM;
@@ -586,6 +608,8 @@ const ModemItem = new Lang.Class({
 
 	if (this.status_label)
 	    this.status_label.text = status_to_string(this.status);
+
+	_extension.update_icon();
     },
 
     set_attached: function(attached) {
@@ -694,7 +718,10 @@ const ofonoManager = new Lang.Class({
 	    let mod_list = Object.getOwnPropertyNames(this.modems)
 	    if (mod_list.length == 0) {
 		this.no_modems(true);
+		return;
 	    }
+
+	    this.update_icon();
 	}));
 
 	this.manager.GetModemsRemote(Lang.bind(this, this.get_modems));
@@ -757,13 +784,27 @@ const ofonoManager = new Lang.Class({
 	    this.no_modems_item.addMenuItem(no_modem_label);
 	    this.menu.addMenuItem(this.no_modems_item);
 
-	    _extension.setIcon('network-cellular-umts-symbolic');
+	    this.update_icon();
 	} else {
 	    if (this.no_modems_item) {
 		this.no_modems_item.destroy();
 		this.no_modems_item = null;
 	    }
 	}
+    },
+
+    update_icon:function() {
+	let _status = State.DISABLED;
+
+	if (this.modems) {
+	    for each (let path in Object.keys(this.modems)) {
+		if (this.modems[path].modem.status > _status)
+		    _status = this.modems[path].modem.status;
+            }
+	}
+
+	global.log('status:' + _status);
+	_extension.setIcon(status_to_icon(_status));
     }
 })
 
