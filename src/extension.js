@@ -803,7 +803,6 @@ const ofonoManager = new Lang.Class({
             }
 	}
 
-	global.log('status:' + _status);
 	_extension.setIcon(status_to_icon(_status));
     }
 })
