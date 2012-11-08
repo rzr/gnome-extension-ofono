@@ -102,6 +102,132 @@ function status_to_icon(status) {
     }
 }
 
+/* org.ofono.ConnectionContext Interface */
+const ConnectionContextInterface = <interface name="org.ofono.ConnectionContext">
+<method name="SetProperty">
+    <arg name="name" type="s" direction="in"/>
+    <arg name="value" type="v" direction="in"/>
+</method>
+</interface>;
+
+const ConnectionContextProxy = Gio.DBusProxy.makeProxyWrapper(ConnectionContextInterface);
+
+const APNDialog = new Lang.Class({
+    Name: 'PinDialog',
+    Extends: ModalDialog.ModalDialog,
+    _init: function(path) {
+	this.parent({ styleClass: 'prompt-dialog' });
+	this.context = new ConnectionContextProxy(Gio.DBus.system, BUS_NAME, path);
+
+	/* Create the main container of the dialog */
+	let mainContentBox = new St.BoxLayout({ style_class: 'prompt-dialog-main-layout', vertical: false });
+        this.contentLayout.add(mainContentBox,
+                               { x_fill: true,
+                                 y_fill: true });
+
+	/* Add the dialog password icon */
+        let icon = new St.Icon({ icon_name: 'dialog-password-symbolic' });
+        mainContentBox.add(icon,
+                           { x_fill:  true,
+                             y_fill:  false,
+                             x_align: St.Align.END,
+                             y_align: St.Align.START });
+
+	/* Add a Message to the container */
+        this.messageBox = new St.BoxLayout({ style_class: 'prompt-dialog-message-layout',
+                                            vertical: true });
+        mainContentBox.add(this.messageBox,
+                           { y_align: St.Align.START });
+
+	/* Add a Header Label in the Message */
+        let subjectLabel = new St.Label({ style_class: 'prompt-dialog-headline',
+					  text: "Access Point Name required"});
+
+        this.messageBox.add(subjectLabel,
+                       { y_fill:  false,
+                         y_align: St.Align.START });
+
+	/* Create a box container */
+        this.apnBox = new St.BoxLayout({ vertical: false });
+	this.messageBox.add(this.apnBox, { y_fill: true, y_align: St.Align.START, expand: true });
+
+	/* PIN Label */
+        this.apnLabel = new St.Label(({ style_class: 'prompt-dialog-description', text: "APN "}));
+        this.apnBox.add(this.apnLabel,  { y_fill: false, y_align: St.Align.START });
+
+	/* PIN Entry */
+        this._apnEntry = new St.Entry({ style_class: 'prompt-dialog-password-entry', text: "", can_focus: true });
+        ShellEntry.addContextMenu(this._apnEntry, { isPassword: false });
+
+        this.apnBox.add(this._apnEntry, {expand: true, y_align: St.Align.END });
+
+	this._apnEntry.clutter_text.connect('text-changed', Lang.bind(this, this.UpdateOK));
+
+        this.okButton = { label:  _("Set APN"),
+                           action: Lang.bind(this, this.onOk),
+                           key:    Clutter.KEY_Return,
+                         };
+
+        this.setButtons([{ label: _("Cancel"),
+                           action: Lang.bind(this, this.onCancel),
+                           key:    Clutter.KEY_Escape,
+                         },
+                         this.okButton]);
+
+	this.timeoutid = Mainloop.timeout_add(DIALOG_TIMEOUT, Lang.bind(this, function() {
+	    this.onCancel();
+	    return false;
+	}));
+
+	this.open();
+
+	this.UpdateOK();
+
+	global.stage.set_key_focus(this._apnEntry);
+    },
+
+    onOk: function() {
+	this.close();
+
+	Mainloop.source_remove(this.timeoutid);
+
+	let apn = GLib.Variant.new('s', this._apnEntry.get_text());
+	this.context.SetPropertyRemote('AccessPointName', apn, Lang.bind(this, function(result, excp) {
+		this.destroy();
+	}));
+    },
+
+    onCancel: function() {
+	this.close();
+
+	Mainloop.source_remove(this.timeoutid);
+
+	this.destroy();
+    },
+
+    UpdateOK: function() {
+	let enable = false;
+	let pass = this._apnEntry.get_text();
+
+	    if (pass.length >= 1)
+		enable = true;
+	    else
+		enable = false;
+
+	if (enable) {
+	    this.okButton.button.reactive = true;
+	    this.okButton.button.can_focus = true;
+	    this.okButton.button.remove_style_pseudo_class('disabled');
+	    this._apnEntry.clutter_text.connect('activate', Lang.bind(this, this.onOk));
+	} else {
+	    this.okButton.button.reactive = false;
+	    this.okButton.button.can_focus = false;
+	    this.okButton.button.add_style_pseudo_class('disabled');
+	}
+    }
+});
+
+
 /* UI PIN DIALOG SECTION */
 const PinDialog = new Lang.Class({
     Name: 'PinDialog',
@@ -303,9 +429,19 @@ const ConnectionManagerInterface = <interface name="org.ofono.ConnectionManager"
 <method name="GetProperties">
     <arg name="properties" type="a{sv}" direction="out"/>
 </method>
+<method name="GetContexts">
+    <arg name="contexts" type="a(oa{sv})" direction="out"/>
+</method>
 <signal name="PropertyChanged">
     <arg name="name" type="s"/>
     <arg name="value" type="v"/>
+</signal>
+<signal name="ContextAdded">
+    <arg name="path" type="s"/>
+    <arg name="properties" type="a{sv}"/>
+</signal>
+<signal name="ContextRemoved">
+    <arg name="path" type="s"/>
 </signal>
 </interface>;
 
@@ -368,6 +504,8 @@ const ModemItem = new Lang.Class({
 	this.status		= State.DISABLED;
 	this.bearer		= "none";
 	this.attached		= false;
+	this.connection_manager = null;
+	this.sim_manager	= null;
 
 	if (properties.Name)
 	    this.name	= properties.Name.deep_unpack();
@@ -471,7 +609,7 @@ const ModemItem = new Lang.Class({
     set_interfaces: function(interfaces) {
 	this.interfaces = interfaces;
 
-	if (this.interfaces.indexOf('org.ofono.SimManager') != -1) {
+	if (this.sim_manager == null && this.interfaces.indexOf('org.ofono.SimManager') != -1) {
 
 	    this.sim_manager = new SimManagerProxy(Gio.DBus.system, BUS_NAME, this.path);
 
@@ -513,7 +651,7 @@ const ModemItem = new Lang.Class({
 	    }));
 	}
 
-	if (this.interfaces.indexOf('org.ofono.ConnectionManager') != -1) {
+	if (this.connection_manager == null && this.interfaces.indexOf('org.ofono.ConnectionManager') != -1) {
 
 	    this.connection_manager = new ConnectionManagerProxy(Gio.DBus.system, BUS_NAME, this.path);
 
@@ -536,6 +674,25 @@ const ModemItem = new Lang.Class({
 		    this.set_attached(value.deep_unpack());
 		if (property == 'Bearer')
 		    this.set_bearer(value.deep_unpack());
+	    }));
+
+	    this.connection_manager.GetContextsRemote(Lang.bind(this, function(result, excp) {
+		/* result contains the exported Contexts.
+		 * contexts is a array of path and dict a{sv}.
+		 */
+		let contexts = result[0];
+
+		if (contexts.length == 0)
+		    return;
+
+		for each (let [path, properties] in contexts) {
+		    if ((properties.Name.deep_unpack() == "Internet") &&
+			(properties.Type.deep_unpack() == "internet") &&
+			(properties.AccessPointName.deep_unpack() == "")) {
+			/* Check if internet context has no APN. */
+			this.apn_dialog = new APNDialog(path);
+		    }
+		};
 	    }));
 	}
     },
