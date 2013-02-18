@@ -918,6 +918,7 @@ const ofonoManager = new Lang.Class({
 
 	if (modem_array.length == 0) {
 	    this.no_modems(true);
+	    return;
 	} else
 	    this.no_modems(false);
 
@@ -925,11 +926,18 @@ const ofonoManager = new Lang.Class({
 	    if (Object.getOwnPropertyDescriptor(this.modems, path)) {
 		this.modems[path].modem.UpdateProperties(properties);
 	    } else {
+		/* Do not Add test modems */
+		if (properties.Type.deep_unpack() == "test")
+		    continue;
+
 		this.modems[path] = { modem: new ModemItem(path, properties), sep: new PopupMenu.PopupSeparatorMenuItem()};
 		this.menu.addMenuItem(this.modems[path].modem.CreateMenuItem());
 		this.menu.addMenuItem(this.modems[path].sep);
 	    }
 	}
+
+	if (Object.keys(this.modems).length == 0)
+	    this.no_modems(true);
     },
 
     no_modems: function(add) {
