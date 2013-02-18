@@ -429,6 +429,10 @@ const ConnectionManagerInterface = <interface name="org.ofono.ConnectionManager"
 <method name="GetProperties">
     <arg name="properties" type="a{sv}" direction="out"/>
 </method>
+<method name="SetProperty">
+    <arg name="name" type="s" direction="in"/>
+    <arg name="value" type="v" direction="in"/>
+</method>
 <method name="GetContexts">
     <arg name="contexts" type="a(oa{sv})" direction="out"/>
 </method>
@@ -506,6 +510,7 @@ const ModemItem = new Lang.Class({
 	this.attached		= false;
 	this.connection_manager = null;
 	this.sim_manager	= null;
+	this.roaming_allowed	= null;
 
 	if (properties.Name)
 	    this.name	= properties.Name.deep_unpack();
@@ -667,13 +672,19 @@ const ModemItem = new Lang.Class({
 
 		if (properties.Bearer)
 		    this.set_bearer(properties.Bearer.deep_unpack());
+
+		if (properties.RoamingAllowed)
+		    this.set_roaming(properties.RoamingAllowed.deep_unpack());
+
 	    }));
 
-	    this.sim_prop_sig = this.connection_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
+	    this.connman_prop_sig = this.connection_manager.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
 		if (property == 'Attached')
 		    this.set_attached(value.deep_unpack());
 		if (property == 'Bearer')
 		    this.set_bearer(value.deep_unpack());
+		if (property == 'RoamingAllowed')
+		    this.set_roaming(value.deep_unpack());
 	    }));
 
 	    this.connection_manager.GetContextsRemote(Lang.bind(this, function(result, excp) {
@@ -779,6 +790,23 @@ const ModemItem = new Lang.Class({
 	this.update_status();
     },
 
+    set_roaming: function(roaming) {
+	if (this.roaming_allowed == null) {
+	    this.roaming_allowed = new PopupMenu.PopupSwitchMenuItem(null, roaming);
+	    this.roaming_allowed.label.text = "Allow Roaming";
+
+	    this.roaming_allowed.connect('toggled',  Lang.bind(this, function(item, state) {
+		let val = GLib.Variant.new('b', state);
+		this.connection_manager.SetPropertyRemote('RoamingAllowed', val);
+	    }));
+
+	    this.Item.addMenuItem(this.roaming_allowed);
+	    return;
+	}
+
+	this.roaming_allowed.setToggleState(roaming);
+    },
+
     clicked: function() {
 	if (this.sim_pin && this.sim_pin == "none")
 	    return;
@@ -797,6 +825,9 @@ const ModemItem = new Lang.Class({
 
 	if (this.sim_prop_sig)
 	    this.sim_manager.disconnectSignal(this.sim_prop_sig);
+
+	if (this.connman_prop_sig)
+	    this.connection_manager.disconnectSignal(this.connman_prop_sig);
 
 	if (this.Item)
 	    this.Item.destroy();
