@@ -31,6 +31,7 @@ const ModalDialog = imports.ui.modalDialog;
 const ShellEntry = imports.ui.shellEntry;
 const MessageTray = imports.ui.messageTray;
 const CheckBox = imports.ui.checkBox;
+const Util = imports.misc.util;
 const _ = Gettext.gettext;
 
 const BUS_NAME = 'org.ofono';
@@ -452,11 +453,11 @@ const ConnectionManagerInterface = <interface name="org.ofono.ConnectionManager"
     <arg name="value" type="v"/>
 </signal>
 <signal name="ContextAdded">
-    <arg name="path" type="s"/>
+    <arg name="path" type="o"/>
     <arg name="properties" type="a{sv}"/>
 </signal>
 <signal name="ContextRemoved">
-    <arg name="path" type="s"/>
+    <arg name="path" type="o"/>
 </signal>
 </interface>;
 
@@ -505,8 +506,9 @@ const ModemProxy = Gio.DBusProxy.makeProxyWrapper(ModemInterface);
 const ContextItem = new Lang.Class({
     Name: 'ContextItem',
 
-    _init: function(path, properties) {
+    _init: function(path, properties, modem) {
 	this.path	= path;
+	this.modem	= modem;
 	this.proxy	= new ConnectionContextProxy(Gio.DBus.system, BUS_NAME, path);
 	this.name	= null;
 	this.config	= false;
@@ -526,6 +528,7 @@ const ContextItem = new Lang.Class({
 	this.apn = properties.AccessPointName.deep_unpack();
 	if (this.apn == "") {
 	    this.name = _("Click to configure APN...");
+	    this.config = false;
 	} else {
 	    this.name = properties.Name.deep_unpack();
 	    this.config = true;
@@ -544,14 +547,21 @@ const ContextItem = new Lang.Class({
     },
 
     clicked: function() {
-	if (this.config == false)
+	if (this.config == false) {
+	    Util.spawn(['ofono-wizard', '-p', this.modem.path]);
 	    return;
+	}
+
 	if (this.active) {
 	    let val = GLib.Variant.new('b', false);
 	    this.proxy.SetPropertyRemote('Active', val);
 	} else {
-	    let val = GLib.Variant.new('b', true);
-	    this.proxy.SetPropertyRemote('Active', val);
+	    if (this.modem.online == false)
+		global.log("modem is not online");
+	    else {
+		let val = GLib.Variant.new('b', true);
+		this.proxy.SetPropertyRemote('Active', val);
+	    }
 	}
     },
 
@@ -562,6 +572,7 @@ const ContextItem = new Lang.Class({
 
     set_name: function(name) {
 	this.name = name;
+	this.label.text = this.name;
 	this.config = true;
     },
 
@@ -774,6 +785,26 @@ const ModemItem = new Lang.Class({
 		    this.set_roaming(value.deep_unpack());
 	    }));
 
+	    this.connman_sig_contextadd = this.connection_manager.connectSignal('ContextAdded', Lang.bind(this, function(proxy, sender,[path, properties]) {
+		if (Object.getOwnPropertyDescriptor(this.contexts, path)) {
+		    return;
+		}
+
+		this.contexts[path] = { context: new ContextItem(path, properties, this)};
+		this.Item.addMenuItem(this.contexts[path].context.CreateContextItem());
+	    }));
+
+	    this.connman_sig_contextrem = this.connection_manager.connectSignal('ContextRemoved', Lang.bind(this, function(proxy, sender, path) {
+		if (!Object.getOwnPropertyDescriptor(this.contexts, path)) {
+		    return;
+		}
+
+		global.log("Removing context " + path);
+
+		this.contexts[path].context.CleanUp();
+		delete this.contexts[path];
+	    }));
+
 	    this.connection_manager.GetContextsRemote (Lang.bind(this, function(result, excp) {
 		/* result contains the exported Contexts.
 		 * contexts is a array of path and dict a{sv}.
@@ -794,7 +825,7 @@ const ModemItem = new Lang.Class({
 		    if (Object.getOwnPropertyDescriptor(this.contexts, path)) {
 			this.contexts[path].context.UpdateProperties(properties);
 		    } else {
-			this.contexts[path] = { context: new ContextItem(path, properties)};
+			this.contexts[path] = { context: new ContextItem(path, properties, this)};
 			this.Item.addMenuItem(this.contexts[path].context.CreateContextItem());
 		    }
 		};
