@@ -76,6 +76,8 @@ function status_to_string(status) {
 	return _("High Speed Available");
     case State.LTE:
 	return _("LTE Available");
+    default:
+	return _("Error");
     }
 }
 
@@ -99,133 +101,125 @@ function status_to_icon(status) {
 	return  'network-cellular-3g-symbolic';
     case State.LTE:
 	return  'network-cellular-4g-symbolic';
+    default:
+	return 'network-cellular-umts-symbolic';
     }
 }
 
-/* org.ofono.ConnectionContext Interface */
-const ConnectionContextInterface = <interface name="org.ofono.ConnectionContext">
-<method name="SetProperty">
-    <arg name="name" type="s" direction="in"/>
-    <arg name="value" type="v" direction="in"/>
-</method>
-</interface>;
+// const APNDialog = new Lang.Class({
+//     Name: 'PinDialog',
+//     Extends: ModalDialog.ModalDialog,
+//     _init: function(path) {
+// 	this.parent({ styleClass: 'prompt-dialog' });
+// 	this.context = new ConnectionContextProxy(Gio.DBus.system, BUS_NAME, path);
 
-const ConnectionContextProxy = Gio.DBusProxy.makeProxyWrapper(ConnectionContextInterface);
+// 	/* Create the main container of the dialog */
+// 	let mainContentBox = new St.BoxLayout({ style_class: 'prompt-dialog-main-layout', vertical: false });
+//         this.contentLayout.add(mainContentBox,
+//                                { x_fill: true,
+//                                  y_fill: true });
 
-const APNDialog = new Lang.Class({
-    Name: 'PinDialog',
-    Extends: ModalDialog.ModalDialog,
-    _init: function(path) {
-	this.parent({ styleClass: 'prompt-dialog' });
-	this.context = new ConnectionContextProxy(Gio.DBus.system, BUS_NAME, path);
+// 	/* Add the dialog password icon */
+//         let icon = new St.Icon({ icon_name: 'dialog-password-symbolic' });
+//         mainContentBox.add(icon,
+//                            { x_fill:  true,
+//                              y_fill:  false,
+//                              x_align: St.Align.END,
+//                              y_align: St.Align.START });
 
-	/* Create the main container of the dialog */
-	let mainContentBox = new St.BoxLayout({ style_class: 'prompt-dialog-main-layout', vertical: false });
-        this.contentLayout.add(mainContentBox,
-                               { x_fill: true,
-                                 y_fill: true });
+// 	/* Add a Message to the container */
+//         this.messageBox = new St.BoxLayout({ style_class: 'prompt-dialog-message-layout',
+//                                             vertical: true });
+//         mainContentBox.add(this.messageBox,
+//                            { y_align: St.Align.START });
 
-	/* Add the dialog password icon */
-        let icon = new St.Icon({ icon_name: 'dialog-password-symbolic' });
-        mainContentBox.add(icon,
-                           { x_fill:  true,
-                             y_fill:  false,
-                             x_align: St.Align.END,
-                             y_align: St.Align.START });
+// 	/* Add a Header Label in the Message */
+//         let subjectLabel = new St.Label({ style_class: 'prompt-dialog-headline',
+// 					  text: "Access Point Name required"});
 
-	/* Add a Message to the container */
-        this.messageBox = new St.BoxLayout({ style_class: 'prompt-dialog-message-layout',
-                                            vertical: true });
-        mainContentBox.add(this.messageBox,
-                           { y_align: St.Align.START });
+//         this.messageBox.add(subjectLabel,
+//                        { y_fill:  false,
+//                          y_align: St.Align.START });
 
-	/* Add a Header Label in the Message */
-        let subjectLabel = new St.Label({ style_class: 'prompt-dialog-headline',
-					  text: "Access Point Name required"});
+// 	/* Create a box container */
+//         this.apnBox = new St.BoxLayout({ vertical: false });
+// 	this.messageBox.add(this.apnBox, { y_fill: true, y_align: St.Align.START, expand: true });
 
-        this.messageBox.add(subjectLabel,
-                       { y_fill:  false,
-                         y_align: St.Align.START });
+// 	/* PIN Label */
+//         this.apnLabel = new St.Label(({ style_class: 'prompt-dialog-description', text: "APN "}));
+//         this.apnBox.add(this.apnLabel,  { y_fill: false, y_align: St.Align.START });
 
-	/* Create a box container */
-        this.apnBox = new St.BoxLayout({ vertical: false });
-	this.messageBox.add(this.apnBox, { y_fill: true, y_align: St.Align.START, expand: true });
+// 	/* PIN Entry */
+//         this._apnEntry = new St.Entry({ style_class: 'prompt-dialog-password-entry', text: "", can_focus: true });
+//         ShellEntry.addContextMenu(this._apnEntry, { isPassword: false });
 
-	/* PIN Label */
-        this.apnLabel = new St.Label(({ style_class: 'prompt-dialog-description', text: "APN "}));
-        this.apnBox.add(this.apnLabel,  { y_fill: false, y_align: St.Align.START });
+//         this.apnBox.add(this._apnEntry, {expand: true, y_align: St.Align.END });
 
-	/* PIN Entry */
-        this._apnEntry = new St.Entry({ style_class: 'prompt-dialog-password-entry', text: "", can_focus: true });
-        ShellEntry.addContextMenu(this._apnEntry, { isPassword: false });
+// 	this._apnEntry.clutter_text.connect('text-changed', Lang.bind(this, this.UpdateOK));
 
-        this.apnBox.add(this._apnEntry, {expand: true, y_align: St.Align.END });
+//         this.okButton = { label:  _("Set APN"),
+//                            action: Lang.bind(this, this.onOk),
+//                            key:    Clutter.KEY_Return,
+//                          };
 
-	this._apnEntry.clutter_text.connect('text-changed', Lang.bind(this, this.UpdateOK));
+//         this.setButtons([{ label: _("Cancel"),
+//                            action: Lang.bind(this, this.onCancel),
+//                            key:    Clutter.KEY_Escape,
+//                          },
+//                          this.okButton]);
 
-        this.okButton = { label:  _("Set APN"),
-                           action: Lang.bind(this, this.onOk),
-                           key:    Clutter.KEY_Return,
-                         };
+// 	this.timeoutid = Mainloop.timeout_add(DIALOG_TIMEOUT, Lang.bind(this, function() {
+// 	    this.onCancel();
+// 	    return false;
+// 	}));
 
-        this.setButtons([{ label: _("Cancel"),
-                           action: Lang.bind(this, this.onCancel),
-                           key:    Clutter.KEY_Escape,
-                         },
-                         this.okButton]);
+// 	this.open();
 
-	this.timeoutid = Mainloop.timeout_add(DIALOG_TIMEOUT, Lang.bind(this, function() {
-	    this.onCancel();
-	    return false;
-	}));
+// 	this.UpdateOK();
 
-	this.open();
+// 	global.stage.set_key_focus(this._apnEntry);
+//     },
 
-	this.UpdateOK();
+//     onOk: function() {
+// 	this.close();
 
-	global.stage.set_key_focus(this._apnEntry);
-    },
+// 	Mainloop.source_remove(this.timeoutid);
 
-    onOk: function() {
-	this.close();
+// 	let apn = GLib.Variant.new('s', this._apnEntry.get_text());
+// 	this.context.SetPropertyRemote('AccessPointName', apn, Lang.bind(this, function(result, excp) {
+// 		this.destroy();
+// 	}));
+//     },
 
-	Mainloop.source_remove(this.timeoutid);
+//     onCancel: function() {
+// 	this.close();
 
-	let apn = GLib.Variant.new('s', this._apnEntry.get_text());
-	this.context.SetPropertyRemote('AccessPointName', apn, Lang.bind(this, function(result, excp) {
-		this.destroy();
-	}));
-    },
+// 	Mainloop.source_remove(this.timeoutid);
 
-    onCancel: function() {
-	this.close();
+// 	this.destroy();
+//     },
 
-	Mainloop.source_remove(this.timeoutid);
+//     UpdateOK: function() {
+// 	let enable = false;
+// 	let pass = this._apnEntry.get_text();
 
-	this.destroy();
-    },
+// 	    if (pass.length >= 1)
+// 		enable = true;
+// 	    else
+// 		enable = false;
 
-    UpdateOK: function() {
-	let enable = false;
-	let pass = this._apnEntry.get_text();
-
-	    if (pass.length >= 1)
-		enable = true;
-	    else
-		enable = false;
-
-	if (enable) {
-	    this.okButton.button.reactive = true;
-	    this.okButton.button.can_focus = true;
-	    this.okButton.button.remove_style_pseudo_class('disabled');
-	    this._apnEntry.clutter_text.connect('activate', Lang.bind(this, this.onOk));
-	} else {
-	    this.okButton.button.reactive = false;
-	    this.okButton.button.can_focus = false;
-	    this.okButton.button.add_style_pseudo_class('disabled');
-	}
-    }
-});
+// 	if (enable) {
+// 	    this.okButton.button.reactive = true;
+// 	    this.okButton.button.can_focus = true;
+// 	    this.okButton.button.remove_style_pseudo_class('disabled');
+// 	    this._apnEntry.clutter_text.connect('activate', Lang.bind(this, this.onOk));
+// 	} else {
+// 	    this.okButton.button.reactive = false;
+// 	    this.okButton.button.can_focus = false;
+// 	    this.okButton.button.add_style_pseudo_class('disabled');
+// 	}
+//     }
+// });
 
 
 /* UI PIN DIALOG SECTION */
@@ -424,6 +418,23 @@ const PinDialog = new Lang.Class({
     }
 });
 
+/* org.ofono.ConnectionContext Interface */
+const ConnectionContextInterface = <interface name="org.ofono.ConnectionContext">
+<method name="GetProperties">
+    <arg name="properties" type="a{sv}" direction="out"/>
+</method>
+<method name="SetProperty">
+    <arg name="name" type="s" direction="in"/>
+    <arg name="value" type="v" direction="in"/>
+</method>
+<signal name="PropertyChanged">
+    <arg name="name" type="s"/>
+    <arg name="value" type="v"/>
+</signal>
+</interface>;
+
+const ConnectionContextProxy = Gio.DBusProxy.makeProxyWrapper(ConnectionContextInterface);
+
 /* org.ofono.ConnectionManager Interface */
 const ConnectionManagerInterface = <interface name="org.ofono.ConnectionManager">
 <method name="GetProperties">
@@ -491,12 +502,85 @@ const ModemInterface = <interface name="org.ofono.Modem">
 
 const ModemProxy = Gio.DBusProxy.makeProxyWrapper(ModemInterface);
 
+const ContextItem = new Lang.Class({
+    Name: 'ContextItem',
+
+    _init: function(path, properties) {
+	this.path	= path;
+	this.proxy	= new ConnectionContextProxy(Gio.DBus.system, BUS_NAME, path);
+	this.name	= null;
+	this.config	= false;
+	this.active	= false;
+
+	this.context_section = null;
+
+	this.prop_sig = this.proxy.connectSignal('PropertyChanged', Lang.bind(this, function(proxy, sender,[property, value]) {
+	    if (property == 'Active')
+		this.set_active(value.deep_unpack());
+	    if (property == 'Name')
+		this.set_name(value.deep_unpack());
+	}));
+
+	this.active = properties.Active.deep_unpack();
+
+	this.apn = properties.AccessPointName.deep_unpack();
+	if (this.apn == "") {
+	    this.name = _("Click to configure APN...");
+	} else {
+	    this.name = properties.Name.deep_unpack();
+	    this.config = true;
+	}
+    },
+
+    CreateContextItem: function() {
+	this.context_section = new PopupMenu.PopupBaseMenuItem();
+	this.label = new St.Label();
+	this.label.text = this.name;
+	this.context_section.addActor(this.label);
+
+	this.context_section.connect('activate', Lang.bind(this, this.clicked));
+
+	return this.context_section;
+    },
+
+    clicked: function() {
+	if (this.config == false)
+	    return;
+	if (this.active) {
+	    let val = GLib.Variant.new('b', false);
+	    this.proxy.SetPropertyRemote('Active', val);
+	} else {
+	    let val = GLib.Variant.new('b', true);
+	    this.proxy.SetPropertyRemote('Active', val);
+	}
+    },
+
+    set_active: function(active) {
+	this.active = active;
+	this.context_section.setShowDot(active);
+    },
+
+    set_name: function(name) {
+	this.name = name;
+	this.config = true;
+    },
+
+    CleanUp: function() {
+	if (this.prop_sig)
+	    this.proxy.disconnectSignal(this.prop_sig);
+
+	this.context_section.destroy();
+    }
+});
+
 const ModemItem = new Lang.Class({
     Name: 'Modems.ModemItem',
 
     _init: function(path, properties) {
-	this.path = path;
-	this.proxy = new ModemProxy(Gio.DBus.system, BUS_NAME, path);
+	this.path	= path;
+	this.proxy	= new ModemProxy(Gio.DBus.system, BUS_NAME, path);
+	this.Item	= new PopupMenu.PopupMenuSection();
+	this.contexts	= {};
 
 	this.powered		= properties.Powered.deep_unpack();
 	this.online		= properties.Online.deep_unpack();
@@ -545,8 +629,6 @@ const ModemItem = new Lang.Class({
 
     CreateMenuItem: function() {
 	/* Create a Menu Item for this modem. */
-	this.Item = new PopupMenu.PopupMenuSection();
-
 	this.sw = new PopupMenu.PopupSwitchMenuItem(null, this.powered);
 	this.sw.label.text = this.name;
 
@@ -571,8 +653,13 @@ const ModemItem = new Lang.Class({
 
 	this.update_status();
 
-	this.Item.connect('activate', Lang.bind(this, this.clicked));
+	this.status_section.connect('activate', Lang.bind(this, this.clicked));
 
+	if (Object.keys(this.contexts).length > 0) {
+	    for each (let path in Object.keys(this.contexts)) {
+		this.Item.addMenuItem(this.contexts[path].context.CreateContextItem());
+	    }
+	}
 	return this.Item;
     },
 
@@ -687,23 +774,34 @@ const ModemItem = new Lang.Class({
 		    this.set_roaming(value.deep_unpack());
 	    }));
 
-	    this.connection_manager.GetContextsRemote(Lang.bind(this, function(result, excp) {
+	    this.connection_manager.GetContextsRemote (Lang.bind(this, function(result, excp) {
 		/* result contains the exported Contexts.
 		 * contexts is a array of path and dict a{sv}.
 		 */
+		if (result == null)
+		    return;
+
 		let contexts = result[0];
 
+		/* If there are no contexts at all , we need to create one */
 		if (contexts.length == 0)
 		    return;
 
 		for each (let [path, properties] in contexts) {
-		    if ((properties.Name.deep_unpack() == "Internet") &&
-			(properties.Type.deep_unpack() == "internet") &&
-			(properties.AccessPointName.deep_unpack() == "")) {
-			/* Check if internet context has no APN. */
-			this.apn_dialog = new APNDialog(path);
+		    if ((properties.Type.deep_unpack() != "internet"))
+			continue;
+
+		    if (Object.getOwnPropertyDescriptor(this.contexts, path)) {
+			this.contexts[path].context.UpdateProperties(properties);
+		    } else {
+			this.contexts[path] = { context: new ContextItem(path, properties)};
+			this.Item.addMenuItem(this.contexts[path].context.CreateContextItem());
 		    }
 		};
+
+		/* If there are no internet contexts found, we need to create one */
+		if (Object.keys(this.contexts).length == 0) {
+		}
 	    }));
 	}
     },
@@ -801,10 +899,8 @@ const ModemItem = new Lang.Class({
 	    }));
 
 	    this.Item.addMenuItem(this.roaming_allowed);
-	    return;
-	}
-
-	this.roaming_allowed.setToggleState(roaming);
+	} else
+	    this.roaming_allowed.setToggleState(roaming);
     },
 
     clicked: function() {
@@ -828,6 +924,15 @@ const ModemItem = new Lang.Class({
 
 	if (this.connman_prop_sig)
 	    this.connection_manager.disconnectSignal(this.connman_prop_sig);
+
+	if (this.contexts) {
+	    for each (let path in Object.keys(this.contexts)) {
+		this.contexts[path].context.CleanUp();
+		delete this.contexts[path];
+            }
+
+	    delete this.contexts;
+	}
 
 	if (this.Item)
 	    this.Item.destroy();
@@ -885,6 +990,10 @@ const ofonoManager = new Lang.Class({
 	    if (Object.getOwnPropertyDescriptor(this.modems, path)) {
 		return;
 	    }
+
+	    /*Do not add test modems */
+	    if (properties.Type.deep_unpack() == "test")
+		    return;
 
 	    this.no_modems(false);
 
