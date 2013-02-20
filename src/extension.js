@@ -517,6 +517,7 @@ const ContextItem = new Lang.Class({
 	this.name	= null;
 	this.config	= false;
 	this.active	= false;
+	this._source	= null;
 
 	this.context_section = null;
 
@@ -561,9 +562,9 @@ const ContextItem = new Lang.Class({
 	    let val = GLib.Variant.new('b', false);
 	    this.proxy.SetPropertyRemote('Active', val);
 	} else {
-	    if (this.modem.online == false)
-		global.log("modem is not online");
-	    else {
+	    if (this.modem.online == false) {
+		this.modem_not_online();
+	    } else {
 		let val = GLib.Variant.new('b', true);
 		this.proxy.SetPropertyRemote('Active', val);
 	    }
@@ -581,9 +582,40 @@ const ContextItem = new Lang.Class({
 	this.config = true;
     },
 
+    _ensureSource: function() {
+        if (!this._source) {
+            this._source = new MessageTray.Source(_("oFono"),
+                                                  'network-error-symbolic');
+
+            this._source.connect('destroy', Lang.bind(this, function() {
+                this._source = null;
+            }));
+            Main.messageTray.add(this._source);
+        }
+    },
+
+    modem_not_online: function() {
+        this._ensureSource();
+
+	let title = _("%s is not online").format(this.modem.name);
+	let text = _("%s is not connected to the network. Enable Cellular in Connection Manager to activate this connection.").format(this.modem.name);
+
+        let icon = new St.Icon({ icon_name: 'network-cellular-signal-none-symbolic',
+                                 icon_size: MessageTray.NOTIFICATION_ICON_SIZE });
+
+        let _notification = new MessageTray.Notification(this._source, title, text,
+                                                            { icon: icon });
+        _notification.setUrgency(MessageTray.Urgency.HIGH);
+        _notification.setTransient(true);
+        this._source.notify(_notification);
+    },
+
     CleanUp: function() {
 	if (this.prop_sig)
 	    this.proxy.disconnectSignal(this.prop_sig);
+
+	if (this._source)
+            this._source = null;
 
 	this.context_section.destroy();
     }
