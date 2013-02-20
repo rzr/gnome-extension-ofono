@@ -953,7 +953,8 @@ const ModemItem = new Lang.Class({
 	    if (this.dialog)
 		this.dialog.destroy();
 
-	    this.dialog = new PinDialog(this.sim_manager, this.sim_pin, this.sim_pin_retry);
+	    if (this.dialog == null)
+		this.dialog = new PinDialog(this.sim_manager, this.sim_pin, this.sim_pin_retry);
 	}
     },
 
