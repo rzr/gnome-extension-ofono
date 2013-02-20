@@ -558,17 +558,43 @@ const ContextItem = new Lang.Class({
 	    return;
 	}
 
-	if (this.active) {
-	    let val = GLib.Variant.new('b', false);
-	    this.proxy.SetPropertyRemote('Active', val);
-	} else {
-	    if (this.modem.online == false) {
-		this.modem_not_online();
-	    } else {
-		let val = GLib.Variant.new('b', true);
-		this.proxy.SetPropertyRemote('Active', val);
-	    }
+	if (!this.active && !this.modem.online) {
+	    this.modem_not_online();
+	    return;
 	}
+
+	let val = GLib.Variant.new('b', !this.active);
+	this.proxy.SetPropertyRemote('Active', val, Lang.bind(this, function(result, excp) {
+	    if (excp)
+		this.reconfigure();
+	}));
+    },
+
+    reconfigure: function() {
+        this._ensureSource();
+
+	let title = _("%s - Unable to connect to the network").format(this.modem.name);
+
+        let icon = new St.Icon({ icon_name: 'network-cellular-signal-none-symbolic',
+                                 icon_size: MessageTray.NOTIFICATION_ICON_SIZE });
+
+        this.notification = new MessageTray.Notification(this._source, title, null,
+                                                            { icon: icon, customContent:true });
+
+	this.notification.addBody(_("%s is unable to connect to the network. Make sure you configured the connection correctly or press 'Configure' to configure again.").format(this.modem.name));
+	this.notification.addButton('Configure', _("Configure"));
+
+	this.notification.connect('action-invoked', Lang.bind(this, function(self, action) {
+	    if (action == 'Configure') {
+		Util.spawn(['ofono-wizard', '-p', this.modem.path]);
+		this.notification.destroy();
+	    }
+	}));
+
+        this.notification.setUrgency(MessageTray.Urgency.HIGH);
+        this.notification.setResident(true);
+
+        this._source.notify(this.notification);
     },
 
     set_active: function(active) {
@@ -613,6 +639,9 @@ const ContextItem = new Lang.Class({
     CleanUp: function() {
 	if (this.prop_sig)
 	    this.proxy.disconnectSignal(this.prop_sig);
+
+	if (this.notification)
+	    this.notification.destroy();
 
 	if (this._source)
             this._source = null;
