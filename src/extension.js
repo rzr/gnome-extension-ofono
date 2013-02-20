@@ -527,8 +527,9 @@ const ContextItem = new Lang.Class({
 
 	this.apn = properties.AccessPointName.deep_unpack();
 	if (this.apn == "") {
-	    this.name = _("Click to configure APN...");
+	    this.name = _("Click to Configure Internet...");
 	    this.config = false;
+	    Util.spawn(['ofono-wizard', '-p', this.modem.path]);
 	} else {
 	    this.name = properties.Name.deep_unpack();
 	    this.config = true;
