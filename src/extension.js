@@ -957,6 +957,12 @@ const ModemItem = new Lang.Class({
 	if (this.connman_prop_sig)
 	    this.connection_manager.disconnectSignal(this.connman_prop_sig);
 
+	if (this.connman_sig_contextadd)
+	    this.connection_manager.disconnectSignal(this.connman_sig_contextadd);
+
+	if (this.connman_sig_contextrem)
+	    this.connection_manager.disconnectSignal(this.connman_sig_contextrem);
+
 	if (this.contexts) {
 	    for each (let path in Object.keys(this.contexts)) {
 		this.contexts[path].context.CleanUp();
