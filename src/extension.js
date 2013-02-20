@@ -448,6 +448,10 @@ const ConnectionManagerInterface = <interface name="org.ofono.ConnectionManager"
 <method name="GetContexts">
     <arg name="contexts" type="a(oa{sv})" direction="out"/>
 </method>
+<method name="AddContext">
+    <arg name="type" type="s" direction="in"/>
+    <arg name="path" type="o" direction="out"/>
+</method>
 <signal name="PropertyChanged">
     <arg name="name" type="s"/>
     <arg name="value" type="v"/>
@@ -800,10 +804,12 @@ const ModemItem = new Lang.Class({
 		    return;
 		}
 
-		global.log("Removing context " + path);
-
 		this.contexts[path].context.CleanUp();
 		delete this.contexts[path];
+
+		if (Object.keys(this.contexts).length == 0) {
+		    this.add_context();
+		}
 	    }));
 
 	    this.connection_manager.GetContextsRemote (Lang.bind(this, function(result, excp) {
@@ -815,9 +821,11 @@ const ModemItem = new Lang.Class({
 
 		let contexts = result[0];
 
-		/* If there are no contexts at all , we need to create one */
-		if (contexts.length == 0)
+		/* If there are no contexts at all , we need to create an internet context */
+		if (contexts.length == 0) {
+		    this.add_context();
 		    return;
+		}
 
 		for each (let [path, properties] in contexts) {
 		    if ((properties.Type.deep_unpack() != "internet"))
@@ -833,9 +841,28 @@ const ModemItem = new Lang.Class({
 
 		/* If there are no internet contexts found, we need to create one */
 		if (Object.keys(this.contexts).length == 0) {
+		    this.add_context();
 		}
 	    }));
 	}
+    },
+
+    add_context: function() {
+	this.add_context_section = new PopupMenu.PopupBaseMenuItem();
+	let label = new St.Label();
+	label.text = _("Click to add Internet connection..");
+	this.add_context_section.addActor(label);
+
+	this.Item.addMenuItem(this.add_context_section);
+
+	this.add_context_section.connect('activate', Lang.bind(this, function(){
+
+	    let val = GLib.Variant.new('s', "internet");
+	    this.connection_manager.AddContextRemote("internet", Lang.bind(this, function(result, excp) {
+	    }));
+
+	    this.add_context_section.destroy();
+	}));
     },
 
     set_sim_present: function(present) {
