@@ -1181,6 +1181,9 @@ const ofonoManager = new Lang.Class({
 	/* result contains the exported Modems.
 	 * modems is a array: a(oa{sv}), each element consists of [path, Properties]
 	*/
+	if (result == null)
+	    return;
+
 	let modem_array = result[0];
 
 	if (modem_array.length == 0) {
